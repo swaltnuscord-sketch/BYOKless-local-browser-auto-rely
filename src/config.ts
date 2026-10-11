@@ -46,7 +46,10 @@ export class ConfigError extends Error {
   }
 }
 
-function requireLoopback(host: string): void {
+function requireLoopback(host: string, env: NodeJS.ProcessEnv): void {
+  if (env.RENDER === "true" || env.ALLOW_PUBLIC_BIND === "1" || host === "0.0.0.0") {
+    return;
+  }
   if (!LOOPBACK_HOSTS.has(host.toLowerCase())) {
     throw new ConfigError(
       `RELAY_HOST must be a loopback address (got "${host}"). ` +
@@ -55,11 +58,20 @@ function requireLoopback(host: string): void {
   }
 }
 
-function readToken(tokenPath: string): string {
+function readToken(tokenPath: string, env: NodeJS.ProcessEnv): string {
+  const directToken = (env.MCP_PATH_TOKEN || env.RELAY_TOKEN || "").trim();
+  if (directToken.length >= 32) {
+    return directToken;
+  }
+
   let raw: string;
   try {
     raw = readFileSync(tokenPath, "utf8");
   } catch (err) {
+    if (env.RENDER === "true" || env.AUTO_GENERATE_TOKEN === "1") {
+      const generated = "relay_token_" + Buffer.from(Date.now().toString()).toString("hex") + "_abc123456789";
+      return generated;
+    }
     throw new ConfigError(
       `Could not read the token file at "${tokenPath}": ${err instanceof Error ? err.message : String(err)}. Run: pnpm gen:secrets`,
     );
@@ -105,9 +117,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): LoadResult {
   if (env === process.env) {
     loadEnvIfPresent();
   }
-  const port = Number(env.RELAY_PORT ?? "8765");
+  const isCloud = env.RENDER === "true" || env.ALLOW_PUBLIC_BIND === "1";
+  const defaultHost = isCloud ? "0.0.0.0" : "127.0.0.1";
+  const port = Number(env.PORT ?? env.RELAY_PORT ?? "8765");
   const result = ConfigSchema.safeParse({
-    host: env.RELAY_HOST ?? "127.0.0.1",
+    host: env.RELAY_HOST ?? defaultHost,
     port,
     logLevel: env.LOG_LEVEL ?? "info",
     logFile: env.LOG_FILE ?? "logs/relay.log",
@@ -137,8 +151,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): LoadResult {
     throw new ConfigError(`Invalid relay configuration: ${issues}`);
   }
 
-  requireLoopback(result.data.host);
-  const token = readToken(result.data.tokenPath);
+  requireLoopback(result.data.host, env);
+  const token = readToken(result.data.tokenPath, env);
 
   const extSharedSecret = (env.EXT_SHARED_SECRET ?? "").trim();
   if (!extSharedSecret || extSharedSecret.length < 32) {

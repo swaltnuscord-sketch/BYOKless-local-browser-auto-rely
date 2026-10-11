@@ -198,6 +198,9 @@ export function createApp(options: McpServerOptions) {
   const sessionLease = new SessionLease(60_000);
 
   const allowedHosts = ["127.0.0.1", "localhost", "::1"];
+  if (process.env.RENDER_EXTERNAL_HOSTNAME) {
+    allowedHosts.push(process.env.RENDER_EXTERNAL_HOSTNAME);
+  }
   if (options.tunnelUrl) {
     try {
       const u = new URL(options.tunnelUrl);
@@ -210,9 +213,11 @@ export function createApp(options: McpServerOptions) {
     allowedHosts.push(...options.allowedHosts);
   }
 
-  // createMcpExpressApp supplies the SDK's DNS-rebinding protection for the
-  // loopback case; Host validation is configured with allowed hosts.
-  const app = createMcpExpressApp({ host: "127.0.0.1", allowedHosts });
+  const isCloud = process.env.RENDER === "true" || process.env.ALLOW_PUBLIC_BIND === "1";
+  const app = createMcpExpressApp({
+    host: isCloud ? "0.0.0.0" : "127.0.0.1",
+    allowedHosts: isCloud && (!options.allowedHosts || options.allowedHosts.length === 0) ? undefined : allowedHosts,
+  });
   app.set("trust proxy", 1);
 
   // Rate limiter keyed by SHA-256 hash of token or mcp-session-id

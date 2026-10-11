@@ -94,7 +94,7 @@ async function main() {
   });
 
   const adminApp = createAdminApp({ dispatcher, sessions: app.locals.sessions });
-  const adminPort = config.port === 0 ? 0 : config.port + 1;
+  const adminPort = config.port === 0 ? 0 : (process.env.RENDER === "true" ? 0 : config.port + 1);
   const adminServer = adminApp.listen(adminPort, "127.0.0.1", () => {
     logger.info({ host: "127.0.0.1", port: adminPort }, "admin metrics/readyz listening");
   });
