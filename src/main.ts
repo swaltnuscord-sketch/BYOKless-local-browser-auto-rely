@@ -140,10 +140,18 @@ async function main() {
     failStartup("admin server error", { err });
   });
 
-  const wss = new WebSocketServer({ server, path: "/extension" });
+  const wss = new WebSocketServer({ noServer: true });
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    if (url.pathname === "/extension" || url.pathname === "/ws" || url.pathname === "/") {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
   wss.on("error", (err: NodeJS.ErrnoException) => {
-    // A port conflict will also emit here since the WSS binds to the same HTTP server.
-    if (err.code === "EADDRINUSE") return;
     failStartup("websocket server error", { err });
   });
 
